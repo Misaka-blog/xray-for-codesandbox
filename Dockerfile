@@ -1,7 +1,7 @@
 FROM nginx
 MAINTAINER MisakaNo
 
-RUN apt-get update -y && apt-get install -y wget unzip nginx supervisor net-tools
+RUN apt-get update -y && apt-get install -y wget unzip supervisor net-tools qrencode
 
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 COPY nginx.conf /etc/nginx/nginx.conf
