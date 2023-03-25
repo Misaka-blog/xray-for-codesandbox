@@ -4,7 +4,7 @@
 
 ## 项目特点
 
-* 本项目用于在任意一家PaaS云服务商部署xray ，采用的方案为 Nginx + WebSocket + VMess/Vless/Trojan/Shadowsocks + TLS
+* 本项目用于在 CodeSandbox 上部署 xray ，采用的方案为 Node.js + WebSocket + VMess/Vless/Trojan/Shadowsocks + TLS
 * vmess 和 vless 的 uuid 或 trojan 和 shadowsocks 的密码，路径既可以自定义，又或者使用默认值
 * 部署完成如发现不能上网，请检查域名是否被墙，可使用 Cloudflare CDN 或者 worker 解决。
 

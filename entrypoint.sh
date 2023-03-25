@@ -1,70 +1,272 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
 UUID=${UUID:-'de04add9-5c68-8bab-950c-08cd5320df18'}
 VMESS_WSPATH=${VMESS_WSPATH:-'/vmess'}
 VLESS_WSPATH=${VLESS_WSPATH:-'/vless'}
 TROJAN_WSPATH=${TROJAN_WSPATH:-'/trojan'}
 SS_WSPATH=${SS_WSPATH:-'/shadowsocks'}
-URL=${HOSTNAME}-8080.csb.app
 
-sed -i "s#UUID#$UUID#g;s#VMESS_WSPATH#$VMESS_WSPATH#g;s#VLESS_WSPATH#$VLESS_WSPATH#g;s#TROJAN_WSPATH#${TROJAN_WSPATH}#g;s#SS_WSPATH#${SS_WSPATH}#g" /etc/xray/config.json
-sed -i "s#VMESS_WSPATH#$VMESS_WSPATH#g;s#VLESS_WSPATH#$VLESS_WSPATH#g;s#TROJAN_WSPATH#${TROJAN_WSPATH}#g;s#SS_WSPATH#${SS_WSPATH}#g" /etc/nginx/nginx.conf
-
-vmlink=vmess://$(echo -n "{\"v\":\"2\",\"ps\":\"codesandbox_vmess\",\"add\":\"$URL\",\"port\":\"443\",\"id\":\"$UUID\",\"aid\":\"0\",\"net\":\"ws\",\"type\":\"none\",\"host\":\"$URL\",\"path\":\"$VMESS_WSPATH?ed=2048\",\"tls\":\"tls\"}" | base64 -w 0)
-vllink="vless://"$UUID"@"$URL":443?encryption=none&security=tls&type=ws&host="$URL"&path="$VLESS_WSPATH"?ed=2048#codesandbox_vless"
-trlink="trojan://"$UUID"@"$URL":443?security=tls&type=ws&host="$URL"&path="$TROJAN_WSPATH"?ed2048#codesandbox_trojan"
-
-rm -rf /usr/share/nginx/*
-wget https://gitlab.com/Misaka-blog/xray-paas/-/raw/main/mikutap.zip -O /usr/share/nginx/mikutap.zip
-unzip -o "/usr/share/nginx/mikutap.zip" -d /usr/share/nginx/html
-rm -f /usr/share/nginx/mikutap.zip
-
-qrencode -o /usr/share/nginx/html/M$UUID.png $vmlink
-qrencode -o /usr/share/nginx/html/L$UUID.png $vllink
-qrencode -o /usr/share/nginx/html/T$UUID.png $trlink
-
-cat > /usr/share/nginx/html/$UUID.html<<-EOF
-<html>
-<head>
-<title>Codesandbox</title>
-<style type="text/css">
-body {
-	  font-family: Geneva, Arial, Helvetica, san-serif;
+generate_config() {
+  cat > config.json << EOF
+{
+    "log":{
+        "access":"/dev/null",
+        "error":"/dev/null",
+        "loglevel":"none"
+    },
+    "inbounds":[
+        {
+            "port":8080,
+            "protocol":"vless",
+            "settings":{
+                "clients":[
+                    {
+                        "id":"${UUID}",
+                        "flow":"xtls-rprx-vision"
+                    }
+                ],
+                "decryption":"none",
+                "fallbacks":[
+                    {
+                        "dest":3001
+                    },
+                    {
+                        "path":"${VLESS_WSPATH}",
+                        "dest":3002
+                    },
+                    {
+                        "path":"${VMESS_WSPATH}",
+                        "dest":3003
+                    },
+                    {
+                        "path":"${TROJAN_WSPATH}",
+                        "dest":3004
+                    },
+                    {
+                        "path":"${SS_WSPATH}",
+                        "dest":3005
+                    }
+                ]
+            },
+            "streamSettings":{
+                "network":"tcp"
+            }
+        },
+        {
+            "port":3001,
+            "listen":"127.0.0.1",
+            "protocol":"vless",
+            "settings":{
+                "clients":[
+                    {
+                        "id":"${UUID}"
+                    }
+                ],
+                "decryption":"none"
+            },
+            "streamSettings":{
+                "network":"ws",
+                "security":"none"
+            }
+        },
+        {
+            "port":3002,
+            "listen":"127.0.0.1",
+            "protocol":"vless",
+            "settings":{
+                "clients":[
+                    {
+                        "id":"${UUID}",
+                        "level":0
+                    }
+                ],
+                "decryption":"none"
+            },
+            "streamSettings":{
+                "network":"ws",
+                "security":"none",
+                "wsSettings":{
+                    "path":"${VLESS_WSPATH}"
+                }
+            },
+            "sniffing":{
+                "enabled":true,
+                "destOverride":[
+                    "http",
+                    "tls"
+                ],
+                "metadataOnly":false
+            }
+        },
+        {
+            "port":3003,
+            "listen":"127.0.0.1",
+            "protocol":"vmess",
+            "settings":{
+                "clients":[
+                    {
+                        "id":"${UUID}",
+                        "alterId":0
+                    }
+                ]
+            },
+            "streamSettings":{
+                "network":"ws",
+                "wsSettings":{
+                    "path":"${VMESS_WSPATH}"
+                }
+            },
+            "sniffing":{
+                "enabled":true,
+                "destOverride":[
+                    "http",
+                    "tls"
+                ],
+                "metadataOnly":false
+            }
+        },
+        {
+            "port":3004,
+            "listen":"127.0.0.1",
+            "protocol":"trojan",
+            "settings":{
+                "clients":[
+                    {
+                        "password":"${UUID}"
+                    }
+                ]
+            },
+            "streamSettings":{
+                "network":"ws",
+                "security":"none",
+                "wsSettings":{
+                    "path":"${TROJAN_WSPATH}"
+                }
+            },
+            "sniffing":{
+                "enabled":true,
+                "destOverride":[
+                    "http",
+                    "tls"
+                ],
+                "metadataOnly":false
+            }
+        },
+        {
+            "port":3005,
+            "listen":"127.0.0.1",
+            "protocol":"shadowsocks",
+            "settings":{
+                "clients":[
+                    {
+                        "method":"chacha20-ietf-poly1305",
+                        "password":"${UUID}"
+                    }
+                ],
+                "decryption":"none"
+            },
+            "streamSettings":{
+                "network":"ws",
+                "wsSettings":{
+                    "path":"${SS_WSPATH}"
+                }
+            },
+            "sniffing":{
+                "enabled":true,
+                "destOverride":[
+                    "http",
+                    "tls"
+                ],
+                "metadataOnly":false
+            }
+        }
+    ],
+    "outbounds":[
+        {
+            "protocol":"freedom"
+        },
+        {
+            "tag": "WARP",
+            "protocol": "wireguard",
+            "settings": {
+                "secretKey": "GAl2z55U2UzNU5FG+LW3kowK+BA/WGMi1dWYwx20pWk=",
+                "address": [
+                    "172.16.0.2/32",
+                    "2606:4700:110:8f0a:fcdb:db2f:3b3:4d49/128"
+                ],
+                "peers": [
+                    {
+                        "publicKey": "bmXOC+F1FxEMF9dyiK2H5/1SUtzH0JuVo51h2wPfgyo=",
+                        "endpoint": "engage.cloudflareclient.com:2408"
+                    }
+                ]
+            }
+        }
+    ],
+    "routing": {
+        "domainStrategy": "AsIs",
+        "rules": [
+            {
+                "type": "field",
+                "domain": [
+                    "domain:openai.com",
+                    "domain:ai.com"
+                ],
+                "outboundTag": "WARP"
+            }
+        ]
+    },
+    "dns":{
+        "servers":[
+            "https+local://8.8.8.8/dns-query"
+        ]
     }
-div {
-	  margin: 0 auto;
-	  text-align: left;
-      white-space: pre-wrap;
-      word-break: break-all;
-      max-width: 80%;
-	  margin-bottom: 10px;
 }
-</style>
-</head>
-<body bgcolor="#FFFFFF" text="#000000">
-<div><font color="#009900"><b>VMESS协议链接：</b></font></div>
-<div>$vmlink</div>
-<div><font color="#009900"><b>VMESS协议二维码：</b></font></div>
-<div><img src="/M$UUID.png"></div>
-<div><font color="#009900"><b>VLESS协议链接：</b></font></div>
-<div>$vllink</div>
-<div><font color="#009900"><b>VLESS协议二维码：</b></font></div>
-<div><img src="/L$UUID.png"></div>
-<div><font color="#009900"><b>TROJAN协议链接：</b></font></div>
-<div>$trlink</div>
-<div><font color="#009900"><b>TROJAN协议二维码：</b></font></div>
-<div><img src="/T$UUID.png"></div>
-<div><font color="#009900"><b>SS协议明文：</b></font></div>
-<div>服务器地址：$URL</div>
-<div>端口：443</div>
-<div>密码：$UUID</div>
-<div>加密方式：chacha20-ietf-poly1305</div>
-<div>传输协议：ws</div>
-<div>host：$URL</div>
-<div>path路径：$SS_WSPATH?ed=2048</div>
-<div>TLS：开启</div>
-</body>
-</html>
 EOF
+}
 
-echo "可在此网址查看 xray 节点信息：https://$URL/$UUID.html" > /usr/local/xray/info
+generate_nezha() {
+  cat > nezha.sh << EOF
+#!/usr/bin/env bash
+
+# 哪吒的三个参数
+NEZHA_SERVER=${NEZHA_SERVER}
+NEZHA_PORT=${NEZHA_PORT}
+NEZHA_KEY=${NEZHA_KEY}
+
+# 检测是否已运行
+check_run() {
+    [[ \$(pidof nezha-agent) ]] && echo "哪吒客户端正在运行中" && exit
+}
+
+# 三个变量不全则不安装哪吒客户端
+check_variable() {
+    [[ -z "\${NEZHA_SERVER}" || -z "\${NEZHA_PORT}" || -z "\${NEZHA_KEY}" ]] && exit
+}
+
+# 下载最新版本 Nezha Agent
+download_agent() {
+    if [ ! -e nezha-agent ]; then
+        URL=\$(wget -qO- -4 "https://api.github.com/repos/naiba/nezha/releases/latest" | grep -o "https.*linux_amd64.zip")
+        wget -t 2 -T 10 -N \${URL}
+        unzip -qod ./ nezha-agent_linux_amd64.zip && rm -f nezha-agent_linux_amd64.zip
+    fi
+}
+
+# 运行客户端
+run() {
+    [ -e nezha-agent ] && chmod +x nezha-agent && ./nezha-agent -s \${NEZHA_SERVER}:\${NEZHA_PORT} -p \${NEZHA_KEY}
+}
+
+check_run
+check_variable
+download_agent
+run
+wait
+EOF
+}
+
+generate_config
+generate_nezha
+[ -e nezha.sh ] && bash nezha.sh 2>&1 &
+wait
